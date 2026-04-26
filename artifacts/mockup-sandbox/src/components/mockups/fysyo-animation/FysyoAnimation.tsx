@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 
-const BRAND_TEAL = "#00C9B1";
-const BRAND_DARK = "#0A1628";
-const BRAND_MID = "#0D2040";
-const BRAND_ACCENT = "#FF6B35";
+const BRAND_TEAL = "#00D4B4";
+const BRAND_CYAN = "#00B8E6";
+const BRAND_DARK = "#0A1220";
+const BRAND_MID = "#0D1E35";
+const BRAND_GREEN = "#00D484";
 
 function useCycle(duration: number) {
   const [t, setT] = useState(0);
@@ -24,428 +25,291 @@ function useCycle(duration: number) {
   return t;
 }
 
-function HumanFigure({ x, y, size, phase }: { x: number; y: number; size: number; phase: number }) {
-  const armAngle = Math.sin(phase * Math.PI * 2) * 30;
-  const legAngle = Math.sin(phase * Math.PI * 2 + Math.PI) * 25;
-  const headY = y - size * 1.65;
-  const bodyLen = size * 0.8;
-  const shoulderY = y - size * 1.1;
-  const hipY = y - size * 0.3;
+function useEntrance(delay: number, duration: number) {
+  const [progress, setProgress] = useState(0);
+  useEffect(() => {
+    const start = Date.now();
+    const tick = () => {
+      const elapsed = Date.now() - start;
+      const p = Math.max(0, Math.min(1, (elapsed - delay) / duration));
+      setProgress(easeOut(p));
+      if (p < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }, [delay, duration]);
+  return progress;
+}
 
-  const rad = (deg: number) => (deg * Math.PI) / 180;
-  const armLen = size * 0.6;
-  const legLen = size * 0.7;
+function easeOut(t: number) {
+  return 1 - Math.pow(1 - t, 3);
+}
 
+function easeInOut(t: number) {
+  return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+}
+
+function PulseRing({ cx, cy, t, delay = 0, color = BRAND_TEAL, maxR = 120 }: {
+  cx: number; cy: number; t: number; delay?: number; color?: string; maxR?: number;
+}) {
+  const phase = ((t + delay) % 1);
+  const r = 8 + phase * maxR;
+  const opacity = (1 - phase) * 0.5;
+  return <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth={1.5} opacity={opacity} />;
+}
+
+function OrbitDot({ cx, cy, t, delay, radius, color, size = 3 }: {
+  cx: number; cy: number; t: number; delay: number; radius: number; color: string; size?: number;
+}) {
+  const angle = ((t + delay) % 1) * Math.PI * 2;
+  const x = cx + Math.cos(angle) * radius;
+  const y = cy + Math.sin(angle) * radius;
+  return <circle cx={x} cy={y} r={size} fill={color} opacity={0.8} />;
+}
+
+function FloatingParticle({ x, baseY, t, delay, size, color }: {
+  x: number; baseY: number; t: number; delay: number; size: number; color: string;
+}) {
+  const phase = ((t + delay) % 1);
+  const y = baseY - phase * 160;
+  const opacity = phase < 0.15 ? phase / 0.15 : phase > 0.75 ? (1 - phase) / 0.25 : 1;
+  return <circle cx={x} cy={y} r={size} fill={color} opacity={opacity * 0.45} />;
+}
+
+function GridDots({ cols, rows, t, opacity = 0.1 }: { cols: number; rows: number; t: number; opacity?: number }) {
   return (
-    <g>
-      <circle cx={x} cy={headY} r={size * 0.18} fill="none" stroke={BRAND_TEAL} strokeWidth={2.5} />
-      <line x1={x} y1={headY + size * 0.18} x2={x} y2={hipY} stroke={BRAND_TEAL} strokeWidth={2.5} strokeLinecap="round" />
-      <line
-        x1={x} y1={shoulderY}
-        x2={x + Math.cos(rad(armAngle - 90)) * armLen}
-        y2={shoulderY + Math.sin(rad(armAngle - 90)) * armLen}
-        stroke={BRAND_TEAL} strokeWidth={2.5} strokeLinecap="round"
-      />
-      <line
-        x1={x} y1={shoulderY}
-        x2={x + Math.cos(rad(-armAngle - 90)) * armLen}
-        y2={shoulderY + Math.sin(rad(-armAngle - 90)) * armLen}
-        stroke={BRAND_TEAL} strokeWidth={2.5} strokeLinecap="round"
-      />
-      <line
-        x1={x} y1={hipY}
-        x2={x + Math.cos(rad(legAngle + 90)) * legLen}
-        y2={hipY + Math.sin(rad(legAngle + 90)) * legLen}
-        stroke={BRAND_TEAL} strokeWidth={2.5} strokeLinecap="round"
-      />
-      <line
-        x1={x} y1={hipY}
-        x2={x + Math.cos(rad(-legAngle + 90)) * legLen}
-        y2={hipY + Math.sin(rad(-legAngle + 90)) * legLen}
-        stroke={BRAND_TEAL} strokeWidth={2.5} strokeLinecap="round"
-      />
-    </g>
+    <>
+      {Array.from({ length: cols }, (_, i) =>
+        Array.from({ length: rows }, (_, j) => {
+          const wave = Math.sin(t * Math.PI * 2 + i * 0.5 + j * 0.4) * 0.5 + 0.5;
+          return (
+            <circle
+              key={`${i}-${j}`}
+              cx={i * 44 + 22}
+              cy={j * 44 + 22}
+              r={1.5}
+              fill={BRAND_TEAL}
+              opacity={opacity * (0.3 + wave * 0.7)}
+            />
+          );
+        })
+      )}
+    </>
   );
 }
 
-function Heartbeat({ t }: { t: number }) {
-  const w = 300;
-  const h = 60;
-  const phase = (t * 2) % 1;
-
+function Heartbeat({ t, opacity }: { t: number; opacity: number }) {
+  const phase = (t * 1.8) % 1;
+  const w = 340;
+  const h = 50;
   const pts: [number, number][] = [
-    [0, h / 2],
-    [w * 0.15, h / 2],
-    [w * 0.2, h / 2],
-    [w * 0.25, h * 0.1],
-    [w * 0.3, h * 0.9],
-    [w * 0.35, h * 0.05],
-    [w * 0.42, h / 2],
-    [w * 0.55, h / 2],
-    [w * 0.6, h / 2],
-    [w * 0.65, h * 0.2],
-    [w * 0.7, h * 0.8],
-    [w * 0.75, h * 0.1],
-    [w * 0.8, h / 2],
-    [w, h / 2],
+    [0, h / 2], [w * 0.12, h / 2], [w * 0.18, h / 2],
+    [w * 0.22, h * 0.08], [w * 0.27, h * 0.92], [w * 0.31, h * 0.03],
+    [w * 0.37, h / 2], [w * 0.5, h / 2],
+    [w * 0.54, h / 2], [w * 0.58, h * 0.15], [w * 0.62, h * 0.85],
+    [w * 0.66, h * 0.05], [w * 0.72, h / 2], [w, h / 2],
   ];
-
   const d = pts.map(([x, y], i) => `${i === 0 ? "M" : "L"} ${x} ${y}`).join(" ");
-
-  const dashLen = 700;
-  const offset = dashLen * (1 - phase);
-
+  const dashLen = 900;
   return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
+      <path d={d} fill="none" stroke={BRAND_TEAL} strokeWidth={1.5} opacity={opacity * 0.15} strokeLinecap="round" strokeLinejoin="round" />
       <path
         d={d}
         fill="none"
-        stroke={BRAND_ACCENT}
+        stroke={BRAND_TEAL}
         strokeWidth={2}
         strokeDasharray={dashLen}
-        strokeDashoffset={offset}
+        strokeDashoffset={dashLen * (1 - phase)}
         strokeLinecap="round"
         strokeLinejoin="round"
+        opacity={opacity}
       />
-      <path d={d} fill="none" stroke={BRAND_ACCENT} strokeWidth={1} opacity={0.15} strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
 
-function PulseRing({ cx, cy, t, delay = 0, color = BRAND_TEAL }: { cx: number; cy: number; t: number; delay?: number; color?: string }) {
-  const phase = ((t + delay) % 1);
-  const r = 10 + phase * 80;
-  const opacity = 1 - phase;
-
+function ArcSweep({ cx, cy, r, t, color, delay = 0 }: {
+  cx: number; cy: number; r: number; t: number; color: string; delay?: number;
+}) {
+  const angle = ((t + delay) % 1) * Math.PI * 2;
+  const sweep = Math.PI * 1.2;
+  const startAngle = angle;
+  const endAngle = angle + sweep;
+  const x1 = cx + Math.cos(startAngle) * r;
+  const y1 = cy + Math.sin(startAngle) * r;
+  const x2 = cx + Math.cos(endAngle) * r;
+  const y2 = cy + Math.sin(endAngle) * r;
+  const largeArc = sweep > Math.PI ? 1 : 0;
   return (
-    <circle
-      cx={cx}
-      cy={cy}
-      r={r}
+    <path
+      d={`M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`}
       fill="none"
       stroke={color}
       strokeWidth={1.5}
-      opacity={opacity * 0.5}
+      opacity={0.35}
+      strokeLinecap="round"
     />
   );
 }
 
-function SpineWave({ t }: { t: number }) {
-  const points = 12;
-  const w = 40;
-  const h = 300;
-  const amplitude = 10;
-
-  const path = Array.from({ length: points + 1 }, (_, i) => {
-    const y = (i / points) * h;
-    const wave = Math.sin((i / points) * Math.PI * 3 + t * Math.PI * 4) * amplitude;
-    return `${i === 0 ? "M" : "L"} ${w / 2 + wave} ${y}`;
-  }).join(" ");
-
-  const circles = Array.from({ length: points }, (_, i) => {
-    const y = ((i + 0.5) / points) * h;
-    const wave = Math.sin(((i + 0.5) / points) * Math.PI * 3 + t * Math.PI * 4) * amplitude;
-    return { x: w / 2 + wave, y };
-  });
-
-  return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
-      <path d={path} fill="none" stroke={BRAND_TEAL} strokeWidth={1.5} opacity={0.3} />
-      {circles.map((c, i) => (
-        <circle key={i} cx={c.x} cy={c.y} r={3} fill={BRAND_TEAL}
-          opacity={0.4 + Math.sin(t * Math.PI * 2 + i * 0.5) * 0.3}
-        />
-      ))}
-    </svg>
-  );
-}
-
-function FloatingParticle({ x, y, t, size, speed, delay }: {
-  x: number; y: number; t: number; size: number; speed: number; delay: number;
-}) {
-  const phase = (t * speed + delay) % 1;
-  const py = y - phase * 120;
-  const opacity = phase < 0.2 ? phase / 0.2 : phase > 0.8 ? (1 - phase) / 0.2 : 1;
-
-  return (
-    <circle cx={x} cy={py} r={size} fill={BRAND_TEAL} opacity={opacity * 0.4} />
-  );
-}
-
-function GridDots({ cols, rows, t }: { cols: number; rows: number; t: number }) {
-  const dots = [];
-  for (let i = 0; i < cols; i++) {
-    for (let j = 0; j < rows; j++) {
-      const wave = Math.sin(t * Math.PI * 2 + i * 0.4 + j * 0.3) * 0.5 + 0.5;
-      dots.push(
-        <circle
-          key={`${i}-${j}`}
-          cx={i * 40 + 20}
-          cy={j * 40 + 20}
-          r={1.5}
-          fill={BRAND_TEAL}
-          opacity={0.05 + wave * 0.12}
-        />
-      );
-    }
-  }
-  return <>{dots}</>;
-}
-
-function LetterPath({ letter, x, y, progress, fontSize = 120 }: {
-  letter: string; x: number; y: number; progress: number; fontSize?: number;
-}) {
-  const scale = progress < 0.6 ? progress / 0.6 : 1;
-  const opacity = progress;
-  const translateY = progress < 0.6 ? 30 * (1 - progress / 0.6) : 0;
-
-  return (
-    <text
-      x={x}
-      y={y + translateY}
-      fontSize={fontSize}
-      fontFamily="'Inter', 'Helvetica Neue', Arial, sans-serif"
-      fontWeight="900"
-      fill="white"
-      opacity={opacity}
-      style={{ transform: `scale(${scale})`, transformOrigin: `${x}px ${y}px`, letterSpacing: "0.05em" }}
-    >
-      {letter}
-    </text>
-  );
-}
-
 export function FysyoAnimation() {
-  const t = useCycle(6000);
-  const [logoPhase, setLogoPhase] = useState(0);
-  const [taglineVisible, setTaglineVisible] = useState(false);
-  const [subtitleVisible, setSubtitleVisible] = useState(false);
-  const timeRef = useRef(0);
+  const t = useCycle(8000);
 
-  useEffect(() => {
-    const startTime = Date.now();
-    const update = () => {
-      const elapsed = (Date.now() - startTime) / 1000;
-      timeRef.current = elapsed;
+  const logoEntrance = useEntrance(200, 900);
+  const tagEntrance = useEntrance(900, 700);
+  const heartEntrance = useEntrance(1400, 600);
+  const subtitleEntrance = useEntrance(1800, 600);
 
-      setLogoPhase(Math.min(1, elapsed / 1.5));
-      if (elapsed > 1.2) setTaglineVisible(true);
-      if (elapsed > 1.8) setSubtitleVisible(true);
-    };
-    const interval = setInterval(update, 16);
-    return () => clearInterval(interval);
-  }, []);
+  const cx = 640;
+  const cy = 310;
 
-  const logoProgress = logoPhase;
-  const letterDelay = 0.18;
-  const letters = ["F", "Y", "S", "Y", "O"];
-  const letterSpacing = 88;
-  const logoStartX = 640 - (letters.length * letterSpacing) / 2;
+  const logoY = cy - 40 + (1 - logoEntrance) * 30;
+  const logoScale = 0.5 + logoEntrance * 0.5;
 
   const particles = [
-    { x: 80, y: 500, size: 3, speed: 0.4, delay: 0 },
-    { x: 140, y: 450, size: 2, speed: 0.3, delay: 0.3 },
-    { x: 200, y: 520, size: 4, speed: 0.5, delay: 0.6 },
-    { x: 1100, y: 480, size: 3, speed: 0.35, delay: 0.1 },
-    { x: 1160, y: 440, size: 2, speed: 0.45, delay: 0.5 },
-    { x: 1220, y: 510, size: 4, speed: 0.3, delay: 0.8 },
-    { x: 350, y: 600, size: 2, speed: 0.4, delay: 0.2 },
-    { x: 950, y: 580, size: 3, speed: 0.38, delay: 0.7 },
+    { x: 70, baseY: 560, delay: 0, size: 2.5, color: BRAND_TEAL },
+    { x: 130, baseY: 600, delay: 0.4, size: 1.5, color: BRAND_CYAN },
+    { x: 200, baseY: 540, delay: 0.7, size: 3, color: BRAND_GREEN },
+    { x: 1100, baseY: 550, delay: 0.2, size: 2, color: BRAND_TEAL },
+    { x: 1160, baseY: 590, delay: 0.6, size: 3, color: BRAND_CYAN },
+    { x: 1220, baseY: 570, delay: 0.9, size: 1.5, color: BRAND_GREEN },
+    { x: 320, baseY: 650, delay: 0.3, size: 2, color: BRAND_TEAL },
+    { x: 960, baseY: 640, delay: 0.8, size: 2.5, color: BRAND_CYAN },
   ];
-
-  const figPhase = (t * 1.5) % 1;
 
   return (
     <div
       className="w-full h-screen overflow-hidden"
-      style={{ background: `linear-gradient(135deg, ${BRAND_DARK} 0%, ${BRAND_MID} 50%, #0A1E3D 100%)` }}
+      style={{ background: `linear-gradient(145deg, ${BRAND_DARK} 0%, ${BRAND_MID} 60%, #091828 100%)` }}
     >
       <svg width="100%" height="100%" viewBox="0 0 1280 720" preserveAspectRatio="xMidYMid slice">
-
         <defs>
-          <radialGradient id="centerGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor={BRAND_TEAL} stopOpacity="0.08" />
+          <radialGradient id="glow1" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor={BRAND_TEAL} stopOpacity="0.1" />
             <stop offset="100%" stopColor={BRAND_TEAL} stopOpacity="0" />
           </radialGradient>
-          <radialGradient id="accentGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor={BRAND_ACCENT} stopOpacity="0.06" />
-            <stop offset="100%" stopColor={BRAND_ACCENT} stopOpacity="0" />
+          <radialGradient id="glow2" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor={BRAND_CYAN} stopOpacity="0.07" />
+            <stop offset="100%" stopColor={BRAND_CYAN} stopOpacity="0" />
           </radialGradient>
-          <filter id="blur4">
-            <feGaussianBlur stdDeviation="4" />
-          </filter>
-          <filter id="blur2">
-            <feGaussianBlur stdDeviation="2" />
-          </filter>
-          <linearGradient id="lineGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor={BRAND_TEAL} stopOpacity="0" />
-            <stop offset="50%" stopColor={BRAND_TEAL} stopOpacity="0.6" />
+          <radialGradient id="logoGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor={BRAND_TEAL} stopOpacity="0.25" />
             <stop offset="100%" stopColor={BRAND_TEAL} stopOpacity="0" />
-          </linearGradient>
-          <clipPath id="mainClip">
+          </radialGradient>
+          <filter id="softBlur">
+            <feGaussianBlur stdDeviation="12" />
+          </filter>
+          <filter id="glowFilter">
+            <feGaussianBlur stdDeviation="6" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          <clipPath id="clip">
             <rect x="0" y="0" width="1280" height="720" />
           </clipPath>
         </defs>
 
-        <g clipPath="url(#mainClip)">
-          <GridDots cols={32} rows={18} t={t} />
+        <g clipPath="url(#clip)">
+          <GridDots cols={30} rows={17} t={t} opacity={0.08} />
 
-          <circle cx={640} cy={360} r={400} fill="url(#centerGlow)" />
-          <circle cx={640} cy={360} r={200} fill="url(#accentGlow)" />
+          <circle cx={cx} cy={cy} r={500} fill="url(#glow1)" filter="url(#softBlur)" />
+          <circle cx={cx} cy={cy} r={280} fill="url(#glow2)" filter="url(#softBlur)" />
 
           {particles.map((p, i) => (
             <FloatingParticle key={i} {...p} t={t} />
           ))}
 
-          <g transform="translate(60, 200)">
-            <SpineWave t={t} />
-          </g>
-          <g transform="translate(1180, 200)">
-            <SpineWave t={t} />
-          </g>
+          <ArcSweep cx={cx} cy={cy} r={260} t={t} color={BRAND_TEAL} delay={0} />
+          <ArcSweep cx={cx} cy={cy} r={300} t={t} color={BRAND_CYAN} delay={0.5} />
+          <ArcSweep cx={cx} cy={cy} r={230} t={t} color={BRAND_GREEN} delay={0.25} />
 
-          <g transform="translate(160, 400)">
-            <PulseRing cx={0} cy={0} t={t} delay={0} />
-            <PulseRing cx={0} cy={0} t={t} delay={0.33} />
-            <PulseRing cx={0} cy={0} t={t} delay={0.66} />
-          </g>
-          <g transform="translate(1120, 400)">
-            <PulseRing cx={0} cy={0} t={t} delay={0.15} color={BRAND_ACCENT} />
-            <PulseRing cx={0} cy={0} t={t} delay={0.48} color={BRAND_ACCENT} />
-            <PulseRing cx={0} cy={0} t={t} delay={0.81} color={BRAND_ACCENT} />
-          </g>
+          <circle cx={cx} cy={cy} r={210 + Math.sin(t * Math.PI * 2) * 8} fill="none" stroke={BRAND_TEAL} strokeWidth={0.5} opacity={0.1} strokeDasharray="6 14" />
+          <circle cx={cx} cy={cy} r={270 + Math.sin(t * Math.PI * 2 + 1) * 6} fill="none" stroke={BRAND_CYAN} strokeWidth={0.5} opacity={0.07} strokeDasharray="4 18" />
 
-          <g transform="translate(220, 510)">
-            <HumanFigure x={0} y={0} size={60} phase={figPhase} />
-          </g>
-          <g transform="translate(1060, 510)">
-            <HumanFigure x={0} y={0} size={60} phase={(figPhase + 0.4) % 1} />
-          </g>
+          <PulseRing cx={cx} cy={cy} t={t} delay={0} maxR={220} />
+          <PulseRing cx={cx} cy={cy} t={t} delay={0.33} maxR={220} />
+          <PulseRing cx={cx} cy={cy} t={t} delay={0.66} maxR={220} />
 
-          <line
-            x1={0} y1={360}
-            x2={Math.sin(t * Math.PI * 2) * 200 + 480}
-            y2={360}
-            stroke="url(#lineGrad)"
-            strokeWidth={1}
-            opacity={0.5}
-          />
-          <line
-            x1={1280} y1={360}
-            x2={1280 - (Math.sin(t * Math.PI * 2 + Math.PI) * 200 + 480)}
-            y2={360}
-            stroke="url(#lineGrad)"
-            strokeWidth={1}
-            opacity={0.5}
-          />
+          <OrbitDot cx={cx} cy={cy} t={t} delay={0} radius={250} color={BRAND_TEAL} size={3} />
+          <OrbitDot cx={cx} cy={cy} t={t} delay={0.5} radius={250} color={BRAND_GREEN} size={2.5} />
+          <OrbitDot cx={cx} cy={cy} t={t} delay={0.25} radius={290} color={BRAND_CYAN} size={2} />
+          <OrbitDot cx={cx} cy={cy} t={t} delay={0.75} radius={290} color={BRAND_TEAL} size={2} />
 
           <circle
-            cx={640}
-            cy={360}
-            r={180 + Math.sin(t * Math.PI * 2) * 15}
-            fill="none"
-            stroke={BRAND_TEAL}
-            strokeWidth={0.5}
-            opacity={0.12}
-            strokeDasharray="4 12"
-          />
-          <circle
-            cx={640}
-            cy={360}
-            r={240 + Math.sin(t * Math.PI * 2 + 1) * 10}
-            fill="none"
-            stroke={BRAND_TEAL}
-            strokeWidth={0.5}
-            opacity={0.07}
-            strokeDasharray="4 20"
+            cx={cx} cy={cy}
+            r={190}
+            fill="url(#logoGlow)"
+            filter="url(#softBlur)"
+            opacity={logoEntrance}
           />
 
-          {letters.map((letter, i) => {
-            const progress = Math.max(0, Math.min(1, logoProgress * (1 + letters.length * letterDelay) - i * letterDelay));
-            return (
-              <LetterPath
-                key={i}
-                letter={letter}
-                x={logoStartX + i * letterSpacing}
-                y={310}
-                progress={progress}
-              />
-            );
-          })}
-
-          <rect
-            x={logoStartX - 10}
-            y={320}
-            width={(letterSpacing * letters.length) * logoProgress}
-            height={3}
-            fill={BRAND_TEAL}
-            rx={1.5}
-          />
-
-          <text
-            x={640}
-            y={380}
-            textAnchor="middle"
-            fontSize={15}
-            fontFamily="'Inter', 'Helvetica Neue', Arial, sans-serif"
-            fontWeight="400"
-            fill={BRAND_TEAL}
-            letterSpacing="0.35em"
-            opacity={taglineVisible ? 1 : 0}
-            style={{ transition: "opacity 0.8s ease" }}
+          <g
+            transform={`translate(${cx}, ${logoY}) scale(${logoScale}) translate(-220, -75)`}
+            style={{ opacity: logoEntrance }}
           >
-            PHYSIOTHERAPY & MOVEMENT SCIENCE
-          </text>
-
-          <g opacity={subtitleVisible ? 1 : 0} style={{ transition: "opacity 0.8s ease" }}>
-            <text
-              x={640}
-              y={430}
-              textAnchor="middle"
-              fontSize={12}
-              fontFamily="'Inter', 'Helvetica Neue', Arial, sans-serif"
-              fontWeight="300"
-              fill="white"
-              letterSpacing="0.15em"
-              opacity={0.5}
-            >
-              MOVE BETTER · LIVE STRONGER
-            </text>
-
-            <g transform="translate(530, 455)">
-              <Heartbeat t={t} />
-            </g>
+            <image
+              href="/__mockup/images/fysyo-logo.png"
+              x={0}
+              y={0}
+              width={440}
+              height={150}
+              preserveAspectRatio="xMidYMid meet"
+            />
           </g>
 
-          {[0, 0.25, 0.5, 0.75].map((offset, i) => {
-            const angle = ((t + offset) % 1) * Math.PI * 2;
-            const rx = 320;
-            const ry = 180;
-            const cx = 640 + Math.cos(angle) * rx;
-            const cy = 360 + Math.sin(angle) * ry;
-            const size = 1.5 + Math.sin(angle) * 1;
-            return (
-              <circle
-                key={i}
-                cx={cx}
-                cy={cy}
-                r={size}
-                fill={i % 2 === 0 ? BRAND_TEAL : BRAND_ACCENT}
-                opacity={0.7}
-              />
-            );
-          })}
-
-          <g transform="translate(0, 680)" opacity={subtitleVisible ? 0.4 : 0} style={{ transition: "opacity 1s ease" }}>
+          <g opacity={tagEntrance} transform={`translate(0, ${(1 - tagEntrance) * 15})`}>
             <text
-              x={640}
-              y={0}
+              x={cx}
+              y={440}
               textAnchor="middle"
-              fontSize={10}
+              fontSize={13}
               fontFamily="'Inter', 'Helvetica Neue', Arial, sans-serif"
-              fontWeight="300"
+              fontWeight={400}
+              fill={BRAND_TEAL}
+              letterSpacing="0.38em"
+            >
+              PHYSIOTHERAPY &amp; MOVEMENT SCIENCE
+            </text>
+          </g>
+
+          <g opacity={heartEntrance} transform={`translate(${cx - 170}, 465)`}>
+            <Heartbeat t={t} opacity={heartEntrance} />
+          </g>
+
+          <g opacity={subtitleEntrance} transform={`translate(0, ${(1 - subtitleEntrance) * 10})`}>
+            <text
+              x={cx}
+              y={538}
+              textAnchor="middle"
+              fontSize={11}
+              fontFamily="'Inter', 'Helvetica Neue', Arial, sans-serif"
+              fontWeight={300}
               fill="white"
-              letterSpacing="0.2em"
+              letterSpacing="0.22em"
+              opacity={0.4}
+            >
+              MOVE BETTER · LIVE STRONGER · RECOVER FASTER
+            </text>
+          </g>
+
+          <g opacity={subtitleEntrance * 0.6}>
+            <line x1={cx - 220} y1={562} x2={cx - 20} y2={562} stroke={BRAND_TEAL} strokeWidth={0.5} opacity={0.3} />
+            <circle cx={cx} cy={562} r={2} fill={BRAND_TEAL} opacity={0.5} />
+            <line x1={cx + 20} y1={562} x2={cx + 220} y2={562} stroke={BRAND_TEAL} strokeWidth={0.5} opacity={0.3} />
+          </g>
+
+          <g opacity={subtitleEntrance * 0.35}>
+            <text
+              x={cx}
+              y={695}
+              textAnchor="middle"
+              fontSize={9}
+              fontFamily="'Inter', 'Helvetica Neue', Arial, sans-serif"
+              fontWeight={300}
+              fill="white"
+              letterSpacing="0.25em"
             >
               YOUR RECOVERY STARTS HERE
             </text>
