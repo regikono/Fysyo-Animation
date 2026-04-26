@@ -1,437 +1,611 @@
-const TEAL = "#00C9B1";
-const CYAN = "#00B4D8";
-const GREEN = "#00D484";
-const ORANGE = "#FF6B35";
-const DARK = "#0A1220";
+import { useEffect, useRef, useState } from "react";
+
+/* ─── Brand ─────────────────────────────────────────────── */
+const T = "#00C9B1";   // teal
+const C = "#00B4D8";   // cyan
+const G = "#00D484";   // green
+const O = "#FF6B35";   // orange
+const BG = "#0A1220";
 const CARD = "#0E1D30";
-const BORDER = "#1A2E44";
-const TEXT_MID = "#7090A8";
-const TEXT_DIM = "#3D5A72";
+const BD = "#1A2E44";
+const MID = "#7090A8";
 
-const SIDEBAR_W = 220;
+/* ─── Timeline scenes ────────────────────────────────────── */
+// Each scene: { label, duration (ms), cursorTo: {x,y}, click: bool, activeNav, expandCard, scrollY }
+type Scene = {
+  duration: number;
+  cursor: { x: number; y: number };
+  click?: boolean;
+  activeNav: number;    // 0=dash,1=patients,2=appts,3=exercises
+  activeCard?: number;  // which stat card glows
+  expandRow?: number;   // which appt row highlights
+  scrollY: number;      // simulated scroll offset px
+  highlight?: string;   // element id to pulse
+};
 
-const NAV_ITEMS = [
-  { icon: "⊞", label: "Dashboard", active: true },
-  { icon: "👤", label: "Patients", active: false },
-  { icon: "📅", label: "Appointments", active: false },
-  { icon: "🏃", label: "Exercises", active: false },
-  { icon: "📊", label: "Analytics", active: false },
-  { icon: "💬", label: "Messages", active: false, badge: 3 },
-  { icon: "⚙️", label: "Settings", active: false },
+const SCENES: Scene[] = [
+  // Open app → dashboard
+  { duration: 1800, cursor: { x: 360, y: 160 }, activeNav: 0, scrollY: 0, activeCard: undefined },
+  // Hover stat card 0
+  { duration: 1200, cursor: { x: 376, y: 248 }, activeNav: 0, scrollY: 0, activeCard: 0 },
+  // Hover stat card 2
+  { duration: 1200, cursor: { x: 700, y: 248 }, activeNav: 0, scrollY: 0, activeCard: 2 },
+  // Click on Appointments nav
+  { duration: 900, cursor: { x: 112, y: 294 }, click: true, activeNav: 2, scrollY: 0 },
+  // Hover first appointment row
+  { duration: 1400, cursor: { x: 560, y: 420 }, activeNav: 2, scrollY: 0, expandRow: 0 },
+  // Hover second appointment row
+  { duration: 1200, cursor: { x: 560, y: 480 }, activeNav: 2, scrollY: 0, expandRow: 1 },
+  // Click Patients nav
+  { duration: 900, cursor: { x: 112, y: 254 }, click: true, activeNav: 1, scrollY: 0 },
+  // Scroll down
+  { duration: 1400, cursor: { x: 640, y: 480 }, activeNav: 1, scrollY: 80 },
+  // Hover patient card
+  { duration: 1400, cursor: { x: 400, y: 460 }, activeNav: 1, scrollY: 80, activeCard: 1 },
+  // Back to Dashboard
+  { duration: 900, cursor: { x: 112, y: 214 }, click: true, activeNav: 0, scrollY: 0 },
+  // Rest on chart area
+  { duration: 1600, cursor: { x: 820, y: 480 }, activeNav: 0, scrollY: 0, activeCard: 3 },
 ];
 
-const STATS = [
-  { label: "Today's Sessions", value: "12", sub: "+2 from yesterday", color: TEAL, icon: "📋" },
-  { label: "Active Patients", value: "84", sub: "6 new this week", color: CYAN, icon: "👥" },
-  { label: "Recovery Rate", value: "91%", sub: "↑ 3% this month", color: GREEN, icon: "💪" },
-  { label: "Avg. Progress", value: "78%", sub: "Across all programs", color: ORANGE, icon: "📈" },
-];
-
-const APPOINTMENTS = [
-  { name: "Maria Silva", time: "09:00", type: "Shoulder Rehab", status: "In Progress", avatar: "MS" },
-  { name: "João Costa", time: "10:30", type: "Post-Surgery Knee", status: "Upcoming", avatar: "JC" },
-  { name: "Ana Rodrigues", time: "11:15", type: "Lower Back Pain", status: "Upcoming", avatar: "AR" },
-  { name: "Pedro Alves", time: "13:00", type: "Sports Recovery", status: "Confirmed", avatar: "PA" },
-  { name: "Sofia Mendes", time: "14:30", type: "Cervical Tension", status: "Confirmed", avatar: "SM" },
-];
-
-const PATIENTS = [
-  { name: "Luís Ferreira", progress: 88, sessions: 14, condition: "Rotator Cuff", avatar: "LF" },
-  { name: "Carla Nunes", progress: 65, sessions: 8, condition: "Lumbar Disc", avatar: "CN" },
-  { name: "Rui Barros", progress: 94, sessions: 21, condition: "ACL Recovery", avatar: "RB" },
-  { name: "Inês Sousa", progress: 42, sessions: 4, condition: "Plantar Fascia", avatar: "IS" },
-];
-
-const WEEKLY = [62, 74, 58, 81, 90, 76, 88];
-const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-function Avatar({ initials, color = TEAL, size = 32 }: { initials: string; color?: string; size?: number }) {
-  return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        borderRadius: "50%",
-        background: color + "22",
-        border: `1.5px solid ${color}55`,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: size * 0.35,
-        fontWeight: 600,
-        color: color,
-        flexShrink: 0,
-      }}
-    >
-      {initials}
-    </div>
-  );
-}
-
-function StatCard({ label, value, sub, color, icon }: typeof STATS[0]) {
+/* ─── Cursor component ───────────────────────────────────── */
+function Cursor({ x, y, clicking }: { x: number; y: number; clicking: boolean }) {
   return (
     <div style={{
-      background: CARD,
-      border: `1px solid ${BORDER}`,
-      borderRadius: 14,
-      padding: "20px 22px",
-      flex: 1,
-      position: "relative",
-      overflow: "hidden",
+      position: "absolute",
+      left: x,
+      top: y,
+      pointerEvents: "none",
+      zIndex: 100,
+      transition: "left 0.6s cubic-bezier(0.4,0,0.2,1), top 0.6s cubic-bezier(0.4,0,0.2,1)",
     }}>
-      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: color, borderRadius: "14px 14px 0 0" }} />
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-        <div style={{ fontSize: 11, color: TEXT_MID, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 500 }}>{label}</div>
-        <div style={{ fontSize: 18 }}>{icon}</div>
+      {clicking && (
+        <div style={{
+          position: "absolute",
+          top: -14,
+          left: -14,
+          width: 28,
+          height: 28,
+          borderRadius: "50%",
+          background: `${T}30`,
+          border: `1.5px solid ${T}80`,
+          animation: "ripple 0.4s ease-out forwards",
+        }} />
+      )}
+      <svg width={22} height={26} viewBox="0 0 22 26" style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.5))" }}>
+        <path d="M2 2 L2 20 L7 15 L11 23 L14 22 L10 14 L17 14 Z"
+          fill="white" stroke="#1a1a2e" strokeWidth={1.2} strokeLinejoin="round" />
+      </svg>
+    </div>
+  );
+}
+
+/* ─── Nav items ──────────────────────────────────────────── */
+const NAV = [
+  { icon: "◫", label: "Dashboard" },
+  { icon: "◎", label: "Patients" },
+  { icon: "◷", label: "Appointments" },
+  { icon: "◈", label: "Exercises" },
+  { icon: "◉", label: "Analytics" },
+  { icon: "◌", label: "Messages", badge: 3 },
+];
+
+function Sidebar({ activeNav }: { activeNav: number }) {
+  return (
+    <div style={{
+      width: 180,
+      minWidth: 180,
+      background: "#07101C",
+      borderRight: `1px solid ${BD}`,
+      display: "flex",
+      flexDirection: "column",
+      padding: "18px 0",
+    }}>
+      <div style={{ padding: "0 16px 22px" }}>
+        <img src="/__mockup/images/fysyo-logo.png" alt="FYSYO" style={{ width: 120 }} />
       </div>
-      <div style={{ fontSize: 34, fontWeight: 800, color: "white", lineHeight: 1, marginBottom: 6 }}>{value}</div>
-      <div style={{ fontSize: 11, color: color, fontWeight: 500 }}>{sub}</div>
-    </div>
-  );
-}
-
-function ProgressBar({ value, color = TEAL, height = 6 }: { value: number; color?: string; height?: number }) {
-  return (
-    <div style={{ background: BORDER, borderRadius: height, height, overflow: "hidden", width: "100%" }}>
-      <div style={{ width: `${value}%`, height: "100%", background: color, borderRadius: height }} />
-    </div>
-  );
-}
-
-function BarChart() {
-  const maxH = 80;
-  return (
-    <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height: maxH + 24, paddingBottom: 0 }}>
-      {WEEKLY.map((v, i) => (
-        <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flex: 1 }}>
-          <div style={{ position: "relative", width: "100%", display: "flex", justifyContent: "center" }}>
+      {NAV.map((n, i) => (
+        <div key={n.label} style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "9px 14px",
+          margin: "1px 8px",
+          borderRadius: 8,
+          background: activeNav === i ? `${T}18` : "transparent",
+          color: activeNav === i ? T : MID,
+          fontWeight: activeNav === i ? 600 : 400,
+          fontSize: 12,
+          position: "relative",
+          transition: "background 0.3s, color 0.3s",
+        }}>
+          {activeNav === i && (
             <div style={{
-              width: "100%",
-              height: (v / 100) * maxH,
-              background: i === 4 ? TEAL : `${TEAL}44`,
-              borderRadius: "4px 4px 0 0",
-              transition: "height 0.3s ease",
+              position: "absolute",
+              left: -8,
+              top: "18%",
+              bottom: "18%",
+              width: 3,
+              background: T,
+              borderRadius: "0 3px 3px 0",
             }} />
-          </div>
-          <div style={{ fontSize: 10, color: TEXT_MID, fontWeight: 500 }}>{DAYS[i]}</div>
+          )}
+          <span style={{ fontSize: 14 }}>{n.icon}</span>
+          <span>{n.label}</span>
+          {n.badge && (
+            <span style={{
+              marginLeft: "auto",
+              background: O,
+              color: "white",
+              fontSize: 9,
+              fontWeight: 700,
+              borderRadius: 10,
+              padding: "1px 6px",
+            }}>{n.badge}</span>
+          )}
         </div>
       ))}
+      <div style={{ flex: 1 }} />
+      <div style={{ padding: "14px 16px", borderTop: `1px solid ${BD}` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{
+            width: 30, height: 30, borderRadius: "50%",
+            background: `${C}22`, border: `1.5px solid ${C}55`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 10, fontWeight: 700, color: C,
+          }}>CL</div>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "white" }}>Dr. C. Lima</div>
+            <div style={{ fontSize: 9, color: MID }}>Physiotherapist</div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { bg: string; color: string }> = {
-    "In Progress": { bg: `${TEAL}22`, color: TEAL },
-    "Upcoming": { bg: `${CYAN}18`, color: CYAN },
-    "Confirmed": { bg: `${GREEN}18`, color: GREEN },
-  };
-  const s = map[status] ?? { bg: BORDER, color: TEXT_MID };
-  return (
-    <span style={{
-      background: s.bg,
-      color: s.color,
-      fontSize: 10,
-      fontWeight: 600,
-      padding: "3px 10px",
-      borderRadius: 20,
-      letterSpacing: "0.04em",
-    }}>
-      {status}
-    </span>
-  );
-}
-
-function DonutChart({ value, color = TEAL, size = 88 }: { value: number; color?: string; size?: number }) {
-  const r = (size - 14) / 2;
-  const circ = 2 * Math.PI * r;
-  const dash = (value / 100) * circ;
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={BORDER} strokeWidth={10} />
-      <circle
-        cx={size / 2} cy={size / 2} r={r}
-        fill="none"
-        stroke={color}
-        strokeWidth={10}
-        strokeDasharray={`${dash} ${circ - dash}`}
-        strokeDashoffset={circ / 4}
-        strokeLinecap="round"
-      />
-      <text x={size / 2} y={size / 2 + 1} textAnchor="middle" dominantBaseline="middle" fontSize={13} fontWeight={800} fill="white">{value}%</text>
-    </svg>
-  );
-}
-
-function MiniSparkline({ data, color = TEAL, w = 80, h = 28 }: { data: number[]; color?: string; w?: number; h?: number }) {
-  const max = Math.max(...data);
-  const min = Math.min(...data);
-  const range = max - min || 1;
-  const pts = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * w;
-    const y = h - ((v - min) / range) * (h - 4) - 2;
-    return `${x},${y}`;
-  }).join(" ");
-  return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
-      <polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" opacity={0.8} />
-      <circle cx={pts.split(" ").at(-1)!.split(",")[0]} cy={pts.split(" ").at(-1)!.split(",")[1]} r={2.5} fill={color} />
-    </svg>
-  );
-}
-
-const SPARKLINES = [
-  [55, 62, 70, 64, 74, 81, 90],
-  [40, 48, 52, 60, 55, 65, 76],
-  [70, 78, 85, 80, 88, 92, 94],
-  [20, 28, 35, 38, 40, 40, 42],
+/* ─── Dashboard panel ────────────────────────────────────── */
+const STATS = [
+  { label: "Today's Sessions", value: "12", color: T },
+  { label: "Active Patients", value: "84", color: C },
+  { label: "Recovery Rate", value: "91%", color: G },
+  { label: "Avg Progress", value: "78%", color: O },
 ];
 
-export function FysynoDashboard() {
+const APPTS = [
+  { name: "Maria Silva", time: "09:00", type: "Shoulder Rehab", status: "In Progress", ini: "MS", color: T },
+  { name: "João Costa", time: "10:30", type: "Post-Surgery Knee", status: "Upcoming", ini: "JC", color: C },
+  { name: "Ana Rodrigues", time: "11:15", type: "Lower Back Pain", status: "Upcoming", ini: "AR", color: G },
+  { name: "Pedro Alves", time: "13:00", type: "Sports Recovery", status: "Confirmed", ini: "PA", color: T },
+];
+
+const PATIENTS_D = [
+  { name: "Luís Ferreira", progress: 88, condition: "Rotator Cuff", ini: "LF", color: T },
+  { name: "Carla Nunes", progress: 65, condition: "Lumbar Disc", ini: "CN", color: C },
+  { name: "Rui Barros", progress: 94, condition: "ACL Recovery", ini: "RB", color: G },
+  { name: "Inês Sousa", progress: 42, condition: "Plantar Fascia", ini: "IS", color: O },
+  { name: "Tiago Melo", progress: 73, condition: "Cervical Tension", ini: "TM", color: T },
+  { name: "Sara Faria", progress: 57, condition: "Ankle Sprain", ini: "SF", color: C },
+];
+
+const BAR_DATA = [62, 74, 58, 81, 90, 76, 88];
+const BAR_DAYS = ["M", "T", "W", "T", "F", "S", "S"];
+
+function DashboardView({ activeCard, scrollY }: { activeCard?: number; scrollY: number }) {
   return (
-    <div style={{
-      display: "flex",
-      height: "100vh",
-      background: DARK,
-      fontFamily: "'Inter', 'Helvetica Neue', Arial, sans-serif",
-      fontSize: 13,
-      color: "white",
-      overflow: "hidden",
-    }}>
+    <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      {/* Topbar */}
       <div style={{
-        width: SIDEBAR_W,
-        minWidth: SIDEBAR_W,
-        background: "#080F1C",
-        borderRight: `1px solid ${BORDER}`,
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "12px 22px", borderBottom: `1px solid ${BD}`, background: "#08101E",
+      }}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 700 }}>Good morning, Dr. Lima 👋</div>
+          <div style={{ fontSize: 10, color: MID }}>Saturday, 26 Apr · 12 sessions today</div>
+        </div>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <div style={{
+            background: CARD, border: `1px solid ${BD}`, borderRadius: 8,
+            padding: "6px 14px", color: MID, fontSize: 11, display: "flex", gap: 6, alignItems: "center",
+          }}>
+            <span>🔍</span><span>Search...</span>
+          </div>
+          <div style={{
+            width: 30, height: 30, borderRadius: 8, background: CARD,
+            border: `1px solid ${BD}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14,
+          }}>🔔</div>
+        </div>
+      </div>
+
+      {/* Scrollable body */}
+      <div style={{
+        flex: 1,
+        overflow: "hidden",
+        padding: "18px 22px",
         display: "flex",
         flexDirection: "column",
-        padding: "24px 0",
+        gap: 16,
+        transform: `translateY(-${scrollY}px)`,
+        transition: "transform 0.7s cubic-bezier(0.4,0,0.2,1)",
       }}>
-        <div style={{ padding: "0 20px 28px" }}>
-          <img src="/__mockup/images/fysyo-logo.png" alt="FYSYO" style={{ width: 140, display: "block" }} />
-        </div>
-
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2, padding: "0 12px" }}>
-          {NAV_ITEMS.map((item) => (
-            <div key={item.label} style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              padding: "10px 12px",
-              borderRadius: 10,
-              background: item.active ? `${TEAL}18` : "transparent",
-              color: item.active ? TEAL : TEXT_MID,
-              fontWeight: item.active ? 600 : 400,
-              cursor: "pointer",
-              position: "relative",
+        {/* Stat cards */}
+        <div style={{ display: "flex", gap: 12 }}>
+          {STATS.map((s, i) => (
+            <div key={s.label} style={{
+              flex: 1, background: CARD, border: `1px solid ${activeCard === i ? s.color + "66" : BD}`,
+              borderRadius: 12, padding: "14px 16px", position: "relative", overflow: "hidden",
+              boxShadow: activeCard === i ? `0 0 20px ${s.color}22` : "none",
+              transition: "border-color 0.3s, box-shadow 0.3s",
             }}>
-              {item.active && (
-                <div style={{ position: "absolute", left: 0, top: "20%", bottom: "20%", width: 3, background: TEAL, borderRadius: "0 3px 3px 0" }} />
-              )}
-              <span style={{ fontSize: 15 }}>{item.icon}</span>
-              <span style={{ fontSize: 13 }}>{item.label}</span>
-              {item.badge && (
-                <div style={{
-                  marginLeft: "auto",
-                  background: ORANGE,
-                  color: "white",
-                  fontSize: 10,
-                  fontWeight: 700,
-                  borderRadius: 10,
-                  padding: "1px 7px",
-                }}>
-                  {item.badge}
-                </div>
-              )}
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: s.color, borderRadius: "12px 12px 0 0" }} />
+              <div style={{ fontSize: 9, color: MID, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>{s.label}</div>
+              <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1, marginBottom: 4 }}>{s.value}</div>
+              <div style={{ fontSize: 10, color: s.color }}>↑ trending up</div>
             </div>
           ))}
         </div>
 
-        <div style={{ padding: "16px 20px", borderTop: `1px solid ${BORDER}` }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <Avatar initials="DR" color={CYAN} size={34} />
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: "white" }}>Dr. Carla Lima</div>
-              <div style={{ fontSize: 10, color: TEXT_MID }}>Physiotherapist</div>
+        {/* Main row */}
+        <div style={{ display: "flex", gap: 16, flex: 1 }}>
+          {/* Appointments */}
+          <div style={{
+            flex: 1.2, background: CARD, border: `1px solid ${BD}`, borderRadius: 12, padding: "16px",
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <span style={{ fontSize: 13, fontWeight: 700 }}>Today's Appointments</span>
+              <span style={{ fontSize: 10, color: T }}>View all →</span>
             </div>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <div style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "16px 28px",
-          borderBottom: `1px solid ${BORDER}`,
-          background: "#08101E",
-        }}>
-          <div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: "white" }}>Good morning, Dr. Lima 👋</div>
-            <div style={{ fontSize: 11, color: TEXT_MID, marginTop: 2 }}>Saturday, 26 April 2026 · 12 sessions scheduled today</div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{
-              background: CARD,
-              border: `1px solid ${BORDER}`,
-              borderRadius: 10,
-              padding: "8px 16px",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              color: TEXT_MID,
-              fontSize: 12,
-            }}>
-              <span>🔍</span>
-              <span>Search patients...</span>
-            </div>
-            <div style={{
-              width: 36, height: 36, borderRadius: 10,
-              background: CARD,
-              border: `1px solid ${BORDER}`,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 16, cursor: "pointer",
-            }}>🔔</div>
-            <Avatar initials="DR" color={CYAN} size={36} />
-          </div>
-        </div>
-
-        <div style={{ flex: 1, overflow: "auto", padding: "24px 28px", display: "flex", flexDirection: "column", gap: 20 }}>
-          <div style={{ display: "flex", gap: 16 }}>
-            {STATS.map((s) => <StatCard key={s.label} {...s} />)}
-          </div>
-
-          <div style={{ display: "flex", gap: 16 }}>
-            <div style={{
-              flex: 1.4,
-              background: CARD,
-              border: `1px solid ${BORDER}`,
-              borderRadius: 14,
-              padding: "20px 22px",
-            }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                <div style={{ fontSize: 14, fontWeight: 700 }}>Today's Appointments</div>
-                <span style={{ fontSize: 11, color: TEAL, cursor: "pointer", fontWeight: 500 }}>View all →</span>
+            {APPTS.map((a, i) => (
+              <div key={a.name} style={{
+                display: "flex", alignItems: "center", gap: 10,
+                padding: "8px 10px", borderRadius: 8, marginBottom: 6,
+                background: "#0A1828", border: `1px solid ${BD}`,
+              }}>
+                <div style={{
+                  width: 28, height: 28, borderRadius: "50%",
+                  background: `${a.color}22`, border: `1px solid ${a.color}55`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 9, fontWeight: 700, color: a.color, flexShrink: 0,
+                }}>{a.ini}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 1 }}>{a.name}</div>
+                  <div style={{ fontSize: 10, color: MID, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.type}</div>
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <div style={{ fontSize: 11, color: T, fontWeight: 600, marginBottom: 3 }}>{a.time}</div>
+                  <span style={{
+                    fontSize: 9, fontWeight: 600, padding: "2px 8px", borderRadius: 20,
+                    background: `${a.color}1A`, color: a.color,
+                  }}>{a.status}</span>
+                </div>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {APPOINTMENTS.map((a) => (
-                  <div key={a.name} style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    padding: "10px 14px",
-                    borderRadius: 10,
-                    background: "#0A1828",
-                    border: `1px solid ${BORDER}`,
-                  }}>
-                    <Avatar initials={a.avatar} color={a.status === "In Progress" ? TEAL : CYAN} size={32} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 2 }}>{a.name}</div>
-                      <div style={{ fontSize: 11, color: TEXT_MID }}>{a.type}</div>
-                    </div>
-                    <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: TEAL, marginBottom: 4 }}>{a.time}</div>
-                      <StatusBadge status={a.status} />
-                    </div>
+            ))}
+          </div>
+
+          {/* Right column */}
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 14 }}>
+            {/* Bar chart */}
+            <div style={{ background: CARD, border: `1px solid ${BD}`, borderRadius: 12, padding: "14px 16px" }}>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Weekly Sessions</div>
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 70 }}>
+                {BAR_DATA.map((v, i) => (
+                  <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                    <div style={{
+                      width: "100%", height: (v / 100) * 58,
+                      background: i === 4 ? T : `${T}44`,
+                      borderRadius: "3px 3px 0 0",
+                    }} />
+                    <span style={{ fontSize: 9, color: MID }}>{BAR_DAYS[i]}</span>
                   </div>
                 ))}
               </div>
-            </div>
-
-            <div style={{
-              flex: 1,
-              display: "flex",
-              flexDirection: "column",
-              gap: 16,
-            }}>
-              <div style={{
-                background: CARD,
-                border: `1px solid ${BORDER}`,
-                borderRadius: 14,
-                padding: "20px 22px",
-                flex: 1,
-              }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700 }}>Weekly Sessions</div>
-                  <div style={{ fontSize: 11, color: TEXT_MID }}>This week</div>
-                </div>
-                <BarChart />
-                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12 }}>
-                  <div style={{ fontSize: 11, color: TEXT_MID }}>Peak: Friday · 90%</div>
-                  <div style={{ fontSize: 11, color: TEAL, fontWeight: 600 }}>↑ 12% vs last week</div>
-                </div>
-              </div>
-
-              <div style={{
-                background: CARD,
-                border: `1px solid ${BORDER}`,
-                borderRadius: 14,
-                padding: "18px 22px",
-              }}>
-                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>Compliance Rate</div>
-                <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-                  <DonutChart value={87} color={TEAL} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 11, color: TEXT_MID, marginBottom: 8 }}>Exercise adherence this month</div>
-                    {[
-                      { label: "Home exercises", v: 87, color: TEAL },
-                      { label: "Clinic sessions", v: 95, color: CYAN },
-                      { label: "Self-care plans", v: 72, color: GREEN },
-                    ].map((item) => (
-                      <div key={item.label} style={{ marginBottom: 8 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                          <span style={{ fontSize: 10, color: TEXT_MID }}>{item.label}</span>
-                          <span style={{ fontSize: 10, color: item.color, fontWeight: 600 }}>{item.v}%</span>
-                        </div>
-                        <ProgressBar value={item.v} color={item.color} height={4} />
-                      </div>
-                    ))}
-                  </div>
-                </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+                <span style={{ fontSize: 10, color: T, fontWeight: 600 }}>↑ 12% this week</span>
               </div>
             </div>
-          </div>
 
-          <div style={{
-            background: CARD,
-            border: `1px solid ${BORDER}`,
-            borderRadius: 14,
-            padding: "20px 22px",
-          }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <div style={{ fontSize: 14, fontWeight: 700 }}>Patient Recovery Progress</div>
-              <span style={{ fontSize: 11, color: TEAL, cursor: "pointer", fontWeight: 500 }}>View all patients →</span>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12 }}>
-              {PATIENTS.map((p, i) => (
-                <div key={p.name} style={{
-                  background: "#0A1828",
-                  border: `1px solid ${BORDER}`,
-                  borderRadius: 12,
-                  padding: "16px",
-                }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                    <Avatar initials={p.avatar} color={i % 2 === 0 ? TEAL : CYAN} size={36} />
-                    <div>
-                      <div style={{ fontSize: 12, fontWeight: 600 }}>{p.name}</div>
-                      <div style={{ fontSize: 10, color: TEXT_MID, marginTop: 1 }}>{p.condition}</div>
-                    </div>
+            {/* Compliance */}
+            <div style={{ background: CARD, border: `1px solid ${BD}`, borderRadius: 12, padding: "14px 16px" }}>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Compliance</div>
+              {[
+                { label: "Home exercises", v: 87, color: T },
+                { label: "Clinic sessions", v: 95, color: C },
+                { label: "Self-care", v: 72, color: G },
+              ].map(item => (
+                <div key={item.label} style={{ marginBottom: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                    <span style={{ fontSize: 10, color: MID }}>{item.label}</span>
+                    <span style={{ fontSize: 10, color: item.color, fontWeight: 700 }}>{item.v}%</span>
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                    <span style={{ fontSize: 11, color: TEXT_MID }}>Recovery</span>
-                    <span style={{ fontSize: 11, color: i % 2 === 0 ? TEAL : CYAN, fontWeight: 700 }}>{p.progress}%</span>
-                  </div>
-                  <ProgressBar value={p.progress} color={i % 2 === 0 ? TEAL : CYAN} height={5} />
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
-                    <span style={{ fontSize: 10, color: TEXT_MID }}>{p.sessions} sessions</span>
-                    <MiniSparkline data={SPARKLINES[i]} color={i % 2 === 0 ? TEAL : CYAN} />
+                  <div style={{ height: 5, background: BD, borderRadius: 5 }}>
+                    <div style={{ height: "100%", width: `${item.v}%`, background: item.color, borderRadius: 5 }} />
                   </div>
                 </div>
               ))}
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function PatientsView({ activeCard, scrollY }: { activeCard?: number; scrollY: number }) {
+  return (
+    <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "12px 22px", borderBottom: `1px solid ${BD}`, background: "#08101E",
+      }}>
+        <div style={{ fontSize: 14, fontWeight: 700 }}>Patients</div>
+        <div style={{
+          background: T, color: BG, fontSize: 11, fontWeight: 700,
+          borderRadius: 8, padding: "6px 14px", cursor: "pointer",
+        }}>+ New Patient</div>
+      </div>
+      <div style={{
+        flex: 1, padding: "18px 22px",
+        transform: `translateY(-${scrollY}px)`,
+        transition: "transform 0.7s cubic-bezier(0.4,0,0.2,1)",
+      }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
+          {PATIENTS_D.map((p, i) => (
+            <div key={p.name} style={{
+              background: CARD,
+              border: `1px solid ${activeCard === i ? p.color + "66" : BD}`,
+              borderRadius: 12,
+              padding: "16px",
+              boxShadow: activeCard === i ? `0 0 24px ${p.color}22` : "none",
+              transition: "border-color 0.3s, box-shadow 0.3s",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                <div style={{
+                  width: 38, height: 38, borderRadius: "50%",
+                  background: `${p.color}22`, border: `1.5px solid ${p.color}55`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 12, fontWeight: 700, color: p.color,
+                }}>{p.ini}</div>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700 }}>{p.name}</div>
+                  <div style={{ fontSize: 10, color: MID }}>{p.condition}</div>
+                </div>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                <span style={{ fontSize: 10, color: MID }}>Recovery</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: p.color }}>{p.progress}%</span>
+              </div>
+              <div style={{ height: 6, background: BD, borderRadius: 6 }}>
+                <div style={{ height: "100%", width: `${p.progress}%`, background: p.color, borderRadius: 6, transition: "width 1s ease" }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AppointmentsView({ expandRow }: { expandRow?: number }) {
+  return (
+    <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "12px 22px", borderBottom: `1px solid ${BD}`, background: "#08101E",
+      }}>
+        <div style={{ fontSize: 14, fontWeight: 700 }}>Appointments</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {["Day", "Week", "Month"].map((v, i) => (
+            <div key={v} style={{
+              padding: "5px 12px", borderRadius: 8, fontSize: 11,
+              background: i === 0 ? `${T}22` : CARD,
+              color: i === 0 ? T : MID,
+              border: `1px solid ${i === 0 ? T + "44" : BD}`,
+            }}>{v}</div>
+          ))}
+        </div>
+      </div>
+      <div style={{ flex: 1, padding: "18px 22px", display: "flex", flexDirection: "column", gap: 10 }}>
+        {APPTS.concat([
+          { name: "Miguel Torres", time: "15:00", type: "Hip Replacement Follow-up", status: "Confirmed", ini: "MT", color: G },
+          { name: "Beatriz Lima", time: "16:30", type: "Wrist Tendonitis", status: "Confirmed", ini: "BL", color: O },
+        ]).map((a, i) => (
+          <div key={a.name} style={{
+            display: "flex", alignItems: "center", gap: 14,
+            padding: expandRow === i ? "14px 16px" : "10px 16px",
+            borderRadius: 12,
+            background: expandRow === i ? `${a.color}0E` : CARD,
+            border: `1px solid ${expandRow === i ? a.color + "55" : BD}`,
+            boxShadow: expandRow === i ? `0 0 20px ${a.color}15` : "none",
+            transition: "all 0.35s ease",
+          }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: MID, width: 48, flexShrink: 0 }}>{a.time}</div>
+            <div style={{
+              width: 36, height: 36, borderRadius: "50%",
+              background: `${a.color}22`, border: `1.5px solid ${a.color}55`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 11, fontWeight: 700, color: a.color, flexShrink: 0,
+            }}>{a.ini}</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 3 }}>{a.name}</div>
+              <div style={{ fontSize: 11, color: MID }}>{a.type}</div>
+              {expandRow === i && (
+                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                  {["View Record", "Start Session", "Reschedule"].map(btn => (
+                    <div key={btn} style={{
+                      padding: "4px 12px", borderRadius: 6, fontSize: 10, fontWeight: 600,
+                      background: btn === "Start Session" ? T : `${T}18`,
+                      color: btn === "Start Session" ? BG : T,
+                      cursor: "pointer",
+                    }}>{btn}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <span style={{
+              fontSize: 10, fontWeight: 600, padding: "3px 10px", borderRadius: 20,
+              background: `${a.color}1A`, color: a.color,
+            }}>{a.status}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Main component ─────────────────────────────────────── */
+export function FysynoDashboard() {
+  const [sceneIdx, setSceneIdx] = useState(0);
+  const [clicking, setClicking] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scene = SCENES[sceneIdx];
+
+  useEffect(() => {
+    if (scene.click) {
+      const t = setTimeout(() => {
+        setClicking(true);
+        setTimeout(() => setClicking(false), 300);
+      }, 300);
+      return () => clearTimeout(t);
+    }
+  }, [sceneIdx, scene.click]);
+
+  useEffect(() => {
+    timerRef.current = setTimeout(() => {
+      setSceneIdx(i => (i + 1) % SCENES.length);
+    }, scene.duration);
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [sceneIdx, scene.duration]);
+
+  const cur = scene.cursor;
+
+  return (
+    <div style={{
+      width: "100%",
+      height: "100vh",
+      background: `linear-gradient(145deg, #060D18 0%, #0A1628 100%)`,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontFamily: "'Inter', 'Helvetica Neue', Arial, sans-serif",
+      overflow: "hidden",
+    }}>
+      <style>{`
+        @keyframes ripple {
+          0% { transform: scale(0.5); opacity: 1; }
+          100% { transform: scale(2); opacity: 0; }
+        }
+      `}</style>
+
+      {/* Ambient glow */}
+      <div style={{
+        position: "absolute",
+        width: 700,
+        height: 700,
+        borderRadius: "50%",
+        background: `radial-gradient(circle, ${T}0A 0%, transparent 70%)`,
+        top: "50%",
+        left: "50%",
+        transform: "translate(-50%, -50%)",
+        pointerEvents: "none",
+      }} />
+
+      {/* Laptop shell */}
+      <div style={{
+        width: 1100,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+      }}>
+        {/* Screen */}
+        <div style={{
+          width: "100%",
+          background: "#1A2A3A",
+          borderRadius: "14px 14px 0 0",
+          padding: "8px 8px 0",
+          boxShadow: `0 0 60px rgba(0,201,177,0.12), 0 30px 80px rgba(0,0,0,0.8)`,
+        }}>
+          {/* Browser chrome */}
+          <div style={{
+            background: "#0D1A28",
+            borderRadius: "8px 8px 0 0",
+            padding: "8px 14px",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            borderBottom: `1px solid ${BD}`,
+          }}>
+            <div style={{ display: "flex", gap: 6 }}>
+              {["#FF5F57", "#FFBD2E", "#28C840"].map(c => (
+                <div key={c} style={{ width: 10, height: 10, borderRadius: "50%", background: c }} />
+              ))}
+            </div>
+            <div style={{
+              flex: 1,
+              background: "#0A1520",
+              borderRadius: 6,
+              padding: "4px 12px",
+              fontSize: 10,
+              color: MID,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}>
+              <span style={{ color: T, fontSize: 9 }}>🔒</span>
+              <span>app.fysyo.pt/dashboard</span>
+            </div>
+          </div>
+
+          {/* App window */}
+          <div style={{
+            height: 560,
+            background: BG,
+            display: "flex",
+            position: "relative",
+            overflow: "hidden",
+            borderRadius: "0 0 4px 4px",
+          }}>
+            <Sidebar activeNav={scene.activeNav} />
+
+            {scene.activeNav === 0 && (
+              <DashboardView activeCard={scene.activeCard} scrollY={scene.scrollY} />
+            )}
+            {scene.activeNav === 1 && (
+              <PatientsView activeCard={scene.activeCard} scrollY={scene.scrollY} />
+            )}
+            {scene.activeNav === 2 && (
+              <AppointmentsView expandRow={scene.expandRow} />
+            )}
+            {scene.activeNav >= 3 && (
+              <DashboardView activeCard={scene.activeCard} scrollY={0} />
+            )}
+
+            {/* Cursor */}
+            <Cursor x={cur.x} y={cur.y} clicking={clicking} />
+          </div>
+        </div>
+
+        {/* Laptop base */}
+        <div style={{
+          width: "100%",
+          height: 18,
+          background: "linear-gradient(to bottom, #1E3040, #142030)",
+          borderRadius: "0 0 6px 6px",
+        }} />
+        <div style={{
+          width: "115%",
+          height: 10,
+          background: "linear-gradient(to bottom, #111E2C, #0A1520)",
+          borderRadius: "0 0 40px 40px",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.6)",
+        }} />
+        <div style={{
+          width: "30%",
+          height: 4,
+          background: "#0D1A28",
+          borderRadius: "0 0 6px 6px",
+          marginTop: -4,
+        }} />
       </div>
     </div>
   );
